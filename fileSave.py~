@@ -1,0 +1,26 @@
+import serial.tools.list_ports
+
+def portFind():
+    ports = list(serial.tools.list_ports.comports())
+
+    # MOONLITE SCAN
+    moonlite = False
+    for m in ports:
+        if "FTDIBUS" in m[2]:
+            print "Moonlite: " + str(m[0])
+            moonlite = True
+
+    if(moonlite == False):
+        print "Moonlite not connected."
+
+    # RELAY SCAN
+    relay = False
+    for r in ports:
+        if "SNR=5" in r[2]:
+            print "Relay: " + str(r[0])
+            relay = True
+
+    if(relay == False):
+        print "Relay not connected."
+
+portFind()

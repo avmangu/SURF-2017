@@ -1,0 +1,6 @@
+- Add File Save
+- Take scan at start and end
+- Package up Python progam into exe
+- Fix integration time issue
+- Make plot axis bigger
+- Make BFP Automatic

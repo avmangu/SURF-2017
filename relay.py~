@@ -1,0 +1,409 @@
+import serial
+import sys
+import time
+import random
+import math
+
+from PyQt4.QtCore import pyqtSlot
+from PyQt4.QtGui import *
+
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.pyplot as plt
+
+port = serial.Serial('/dev/ttyUSB0');
+# port = serial.Serial(4)
+
+# create our window
+app = QApplication(sys.argv)
+w = QWidget()
+w.setWindowTitle('Moonlite Scanner')
+logOutput = QTextEdit(w)
+delay = QLineEdit(w)
+
+course = list()
+fine = list()
+positive = list()
+
+course_2 = list()
+fine_2 = list()
+negative = list()
+
+target = 0;
+
+xcoords = list()
+ycoords = list()
+
+def stop():
+        port.write(":FQ#")
+        logOutput.append("Stopped.\n")
+
+def convert(num):
+        c = '%04d' % int(num)
+        return c
+
+def deconvert(num):
+        d = '%0d' % int(num)
+        return d
+
+def stripper(seq):
+        return filter(type(seq).isdigit, seq)
+
+def stepConverter(inches):
+        steps = inches * 6250
+        return int(steps)
+
+def inchConverter(steps):
+        inches = steps * 0.00016
+        return inches
+
+def hex(num):
+        dec = int(str(num), 16)
+        return dec
+
+def goto(pos):
+        hexed_pos = str(format(int(pos), '04x')).upper()
+        port.write(":SF#")
+        port.write(":SN" + hexed_pos + "#")
+        port.write(":FG#")
+
+def getCurrent(mode):
+        port.write(":GP#")
+        inp = port.read(5)
+        pos = int(inp.translate(None, '#'), 16)
+        
+        if(mode == "steps"):
+                return pos
+        elif(mode == "inches"):
+                return inchConverter(pos)
+                
+def position():
+        while True:
+                print str(getCurrent("steps")) + " Steps   -   " + str(getCurrent("inches")) + " Inches"
+                if(ret == target):
+                        print ""
+                        print "Target reached."
+                        break
+                time.sleep(0.6)
+                
+
+def scanner(pos, xmax):
+        center = stepConverter(float(pos))
+        domain = stepConverter(float(xmax))
+        negative_domain = center - (domain - center)
+        initial = getCurrent("steps")
+
+        log = open("log.txt","w") 
+
+        if(initial == center):
+                logOutput.append("Already at Best Focus Position.")
+        else:
+                goto(center)
+                logOutput.append("Repositioning at Best Focus Position...")
+
+                while True:
+                        app.processEvents()
+                        current = getCurrent("steps")
+                        if(current == center):
+                                logOutput.append("Best Focus Position reached.\n")
+                                time.sleep(float(delay.text()))
+                                break
+        
+        log.write(str(getCurrent("inches")) + "\n")
+
+
+        # Moving to  back from positive max
+        logOutput.append("Moving towards Positive Maximum...")
+        goto(domain)
+        
+        while True:
+                app.processEvents()
+                if(getCurrent("steps") == domain):
+                        log.write(str(getCurrent("inches")) + "\n")
+                        logOutput.append("Positive maximum reached.\n")
+                        time.sleep(float(delay.text()))
+                        break
+                
+        count = 1
+        logOutput.append("Stepping back to Best Focus Position...")
+        
+        for i in range(len(positive)):
+                app.processEvents()
+                
+                goto(stepConverter(positive[i]))
+
+                while True:
+                        app.processEvents()
+                        if(getCurrent("steps") == stepConverter(positive[i])):
+                                log.write(str(getCurrent("inches")) + "\n")
+                                logOutput.append("TTL Pulse " + str(count))
+                                time.sleep(float(delay.text()))
+                                break
+                count+=1
+
+        logOutput.append("Returned to Best Focus Position.\n")
+        time.sleep(float(delay.text()))
+
+        # Moving to and back from negative max
+        logOutput.append("Moving towards Negative Maximum...")
+        goto(negative_domain)
+        
+        while True:
+                app.processEvents()
+                current = getCurrent("steps")
+                if(current == negative_domain):
+                        log.write(str(getCurrent("inches")) + "\n")
+                        logOutput.append("Negative maximum reached.\n")
+                        time.sleep(float(delay.text()))
+                        break
+
+        ncount = 1
+        logOutput.append("Stepping back to Best Focus Position...")
+                
+        for j in range(len(negative)):
+                app.processEvents()
+                
+                goto(stepConverter(negative[j]))
+
+                while True:
+                        app.processEvents()
+                        if(getCurrent("steps") == stepConverter(negative[j])):
+                                log.write(str(getCurrent("inches")) + "\n")
+                                logOutput.append("TTL Pulse " + str(count + ncount - 1))
+                                time.sleep(float(delay.text()))
+                                break
+                ncount+=1
+
+        while True:
+                app.processEvents()
+                current = getCurrent("steps")
+                if(current == center):
+                        logOutput.append("Best Focus Position reached.\n")
+                        time.sleep(0.5)
+                        break
+
+        logOutput.append("Scan Complete.")
+        log.close()
+
+def dataGather(center, fine_range, fine_n, course_range, course_n):
+        fine_neg_range = center - (fine_range - center)
+        course_neg_range = center - (course_range - center)
+
+        fine_step = (fine_range - center) / fine_n
+        course_step = (course_range - center) / course_n
+        
+        # POSITIVE
+        pos = center
+        while(pos < course_range):
+                pos = round(pos, 3)
+                course.append(pos)
+                pos += course_step
+        course[-1] = course_range
+
+        pos = center
+        while(pos < fine_range):
+                pos += fine_step
+                pos = round(pos, 3)
+                fine.append(pos)
+        fine[-1] = fine_range
+        
+        # NEGATIVE
+        neg = center
+        while(neg > fine_neg_range):
+                neg = round(neg, 3)
+                neg -= fine_step
+                fine_2.append(neg)
+
+        neg = center
+        while(neg > course_neg_range):
+                neg = round(neg, 3)
+                neg -= course_step
+                course_2.append(neg)
+
+
+        # Create Lists
+        positive_list = fine + course
+        for i in range(len(positive_list)):
+                positive.append(positive_list[i])
+        positive.sort(reverse = True)
+
+        print positive
+
+        negative_list = fine_2 + course_2
+        for j in range(len(negative_list)):
+                negative.append(negative_list[j])
+        negative.sort(reverse = False)
+        
+def main():
+        # Create textbox
+        pos_label = QLabel("Position: ", w)
+        pos_label.move(35, 30)
+        position = QLineEdit(str(getCurrent("inches")), w)
+        position.move(102, 20)
+        position.resize(70, 30)
+        inches = QLabel("inches", w)
+        inches.move(177, 30)
+
+        go = QPushButton('Focus', w)
+        go.move(100, 60)
+
+        refresh = QPushButton('Refresh', w)
+        refresh.move(20, 60)
+
+        stopper = QPushButton('Stop', w)
+        stopper.move(20, 100)
+
+        resetter = QPushButton('Reset', w)
+        resetter.move(100, 100)
+
+        # Create textbox
+        center_label = QLabel("Best Focus Position: ", w)
+        center_label.move(20, 170)
+        center = QLineEdit(w)
+        center.setText("1") # default
+        center.move(160, 160)
+        center.resize(70, 30)
+
+        cdomain_label = QLabel("Course Step Range: ", w)
+        cdomain_label.move(20, 210)
+        cdomain = QLineEdit(w)
+        cdomain.setText("1.5") # default
+        cdomain.move(160, 200)
+        cdomain.resize(70, 30)
+
+        cnum_label = QLabel("Course Step #: ", w)
+        cnum_label.move(20, 250)
+        cnum = QLineEdit(w)
+        cnum.setText("5") # default
+        cnum.move(160, 240)
+        cnum.resize(70, 30)
+
+        fnum_label = QLabel("Fine Step #: ", w)
+        fnum_label.move(270, 250)
+        fnum = QLineEdit(w)
+        fnum.setText("5") # default
+        fnum.move(400, 240)
+        fnum.resize(70, 30)
+
+        fdomain_label = QLabel("Fine Step Range: ", w)
+        fdomain_label.move(270, 210)
+        fdomain = QLineEdit(w)
+        fdomain.setText("1.1") # default
+        fdomain.move(400, 200)
+        fdomain.resize(70, 30)
+
+        time_delay = QLabel("Integration Time: ", w)
+        time_delay.move(270, 170)
+        delay.setText("2") # default time
+        delay.move(400, 160)
+        delay.resize(70, 30)
+
+        simulate = QPushButton("Simulate Graph", w)
+        simulate.move(20, 290)
+
+        scan_button = QPushButton("Start Scan", w)
+        scan_button.move(395, 290)
+
+        figure = plt.figure()
+        plt.ylabel('Distance')
+        plt.xlabel('Time')
+        canvas = FigureCanvas(figure)
+        canvas.setWindowTitle("Simulated Graph")
+
+        # Set window size.
+        w.resize(490, 610)
+
+        logOutput.setReadOnly(True)
+        logOutput.setLineWrapMode(QTextEdit.NoWrap)
+        logOutput.move(20, 340)
+        logOutput.resize(450, 250)
+
+        # Create the actions
+        @pyqtSlot()
+        def start_scan():
+                dataGather(float(center.text()), float(fdomain.text()), float(fnum.text()), float(cdomain.text()), float(cnum.text()))
+                scanner(float(center.text()), float(cdomain.text()))
+
+        def reset():
+                goto(0)
+                logOutput.append("Resetting to 0 inches.\n")
+
+        def repos():
+                value = float(position.text())
+                goto(stepConverter(value))
+                logOutput.append("Focusing to " + str(value) + " inches.\n")
+
+        def updater():
+                position.setText(str(getCurrent("inches")))
+
+        def plot():
+                while len(xcoords) > 0 : xcoords.pop()
+                while len(ycoords) > 0 : ycoords.pop()
+
+                dataGather(float(center.text()), float(fdomain.text()), float(fnum.text()), float(cdomain.text()), float(cnum.text()))
+                
+                # Creating y-coordinates
+                for a in range(2):
+                        ycoords.append(float(center.text()))
+                        
+                for i in range(len(positive)):
+                        ycoords.append(positive[i])
+                        ycoords.append(positive[i])
+
+                for j in range(len(negative)):
+                        ycoords.append(negative[j])
+                        ycoords.append(negative[j])
+
+                # Creating x-coordinates
+                xcoords.append(0)
+
+                time_delay = float(delay.text())
+
+                for x in range((len(ycoords) / 2) + 1):
+                        if(x > 0):
+                                if((len(ycoords) - len(xcoords)) == 1):
+                                        xcoords.append(time_delay * x)
+                                        break
+
+                                xcoords.append(time_delay * x)
+                                xcoords.append(time_delay * x)
+                                
+                # create an axis
+                ax = figure.add_subplot(111)
+                ax.clear()
+
+                toolbar = NavigationToolbar(canvas, w)
+                
+                # discards the old graph
+                ax.hold(False)
+
+                # plot data
+                ax.plot(xcoords, ycoords, '.-')
+
+                # ax.set_ylim([0,2])
+                # ax.set_xlim([0, 250])
+
+                plt.ylabel('Position (Inches)')
+                plt.xlabel('Time (s)')
+
+                # refresh canvas
+                canvas.draw()
+                canvas.show()
+                
+
+        # connect the signals to the slots
+        scan_button.clicked.connect(start_scan)
+        stopper.clicked.connect(stop)
+        resetter.clicked.connect(reset)
+
+        refresh.clicked.connect(updater)
+        go.clicked.connect(repos)
+        simulate.clicked.connect(plot)
+
+        # Show the window and run the app
+        w.show()
+        app.exec_()
+        port.close()
+
+if __name__ == "__main__":
+        dataGather(1.2, 1.4, 5, 1.9, 3)

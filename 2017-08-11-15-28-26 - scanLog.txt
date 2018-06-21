@@ -1,0 +1,29 @@
+Already at Best Focus Position.
+
+Moving towards Positive Maximum...
+Positive maximum reached.
+
+Stepping back to Best Focus Position...
+Position: 1.0 inches
+Position: 0.89488 inches
+Position: 0.8 inches
+Position: 0.72688 inches
+Position: 0.65392 inches
+Position: 0.58096 inches
+Position: 0.57984 inches
+Returned to Best Focus Position.
+
+Moving towards Negative Maximum...
+Negative maximum reached.
+
+Stepping back to Best Focus Position...
+Position: 0.16 inches
+Position: 0.26496 inches
+Position: 0.36 inches
+Position: 0.43296 inches
+Position: 0.50592 inches
+Position: 0.57888 inches
+Position: 0.57984 inches
+Returned to Best Focus Position.
+
+Scan Complete.
